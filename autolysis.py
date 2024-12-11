@@ -8,6 +8,31 @@ import requests
 import sys
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
+from scipy.stats import normaltest
+
+# Ensure all necessary libraries are installed
+REQUIRED_LIBRARIES = [
+    "pandas",
+    "numpy",
+    "seaborn",
+    "matplotlib",
+    "scikit-learn",
+    "scipy",
+    "requests"
+]
+
+def check_and_install_libraries():
+    """Check and install missing libraries."""
+    import subprocess
+    import importlib
+    for library in REQUIRED_LIBRARIES:
+        try:
+            importlib.import_module(library)
+        except ImportError:
+            print(f"Library {library} not found. Installing...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", library])
+
+check_and_install_libraries()
 
 # Ensure AIPROXY_TOKEN is set in the environment
 AIPROXY_TOKEN = os.getenv("AIPROXY_TOKEN")
@@ -17,7 +42,7 @@ if not AIPROXY_TOKEN:
 
 API_BASE = "https://aiproxy.sanand.workers.dev/openai/v1"
 
-def generate_llm_story(analysis, images):
+def generate_llm_story(analysis, images, key_insights):
     """
     Generate a narrative about the data analysis using GPT-4o-mini via direct REST API.
     """
@@ -29,23 +54,27 @@ def generate_llm_story(analysis, images):
     prompt = f"""
     You received a dataset with {analysis['rows']} rows and {analysis['columns']} columns.
     The dataset includes columns: {', '.join(analysis['column_names'])}.
-    
-    Based on this dataset, you performed:
+
+    Based on this dataset, the following analyses were performed:
     - Outlier Detection
     - Correlation Analysis
     - Clustering
-    
+    - Normality Test
+
+    Key insights:
+    {key_insights}
+
     Visualizations:
     - Correlation Heatmap: {images['correlation']}
     - Clustering Visualization: {images['clustering']}
 
     Please write a data story that includes:
-    1. The data received, briefly.
-    2. How each analysis was performed.
+    1. A brief description of the dataset.
+    2. Explanation of each analysis and the methods used.
     3. Key insights from the findings.
-    4. Implications and recommendations based on the results.
+    4. Implications and actionable recommendations.
 
-    Use an engaging narrative tone, suitable for presenting findings in a report.
+    Use an engaging narrative tone suitable for a professional report.
     """
 
     payload = {
@@ -67,24 +96,21 @@ def generate_llm_story(analysis, images):
 
 def create_visualizations(df):
     """
-    Generate visualizations for the dataset with larger sizes but low detail.
+    Generate visualizations for the dataset.
     """
-    # Generate a correlation heatmap without numerical annotations (only colors) with borders around tiles
-    plt.figure(figsize=(10, 10), dpi=100)  # Increased figure size (10x10 inches)
-    sns.heatmap(
-        df.select_dtypes(include=[np.number]).corr(),
-        annot=False,  # Remove numerical annotations
-        cmap='coolwarm',  # Color map
-        linewidths=0.5,  # Border thickness around tiles
-        linecolor='black'  # Border color (black)
-    )
+    # Correlation heatmap
+    plt.figure(figsize=(12, 8))
+    correlation_matrix = df.select_dtypes(include=[np.number]).corr()
+    sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', linewidths=0.5)
     correlation_path = 'correlation_heatmap.png'
-    plt.title('Correlation Heatmap')
+    plt.title('Correlation Heatmap', fontsize=16)
+    plt.xlabel('Features')
+    plt.ylabel('Features')
     plt.tight_layout()
     plt.savefig(correlation_path)
     plt.close()
 
-    # Generate a clustering visualization (low detail with larger size)
+    # Clustering visualization
     numeric_data = df.select_dtypes(include=[np.number]).dropna()
     clustering_path = None
     if numeric_data.shape[1] >= 2:
@@ -93,9 +119,9 @@ def create_visualizations(df):
         kmeans = KMeans(n_clusters=3, random_state=42)
         clusters = kmeans.fit_predict(scaled_data)
 
-        plt.figure(figsize=(10, 10), dpi=100)  # Increased figure size (10x10 inches)
+        plt.figure(figsize=(10, 8))
         plt.scatter(scaled_data[:, 0], scaled_data[:, 1], c=clusters, cmap='viridis', s=50)
-        plt.title('Clustering Visualization (KMeans)')
+        plt.title('K-Means Clustering Visualization', fontsize=16)
         plt.xlabel(numeric_data.columns[0])
         plt.ylabel(numeric_data.columns[1])
         plt.colorbar(label='Cluster')
@@ -106,9 +132,32 @@ def create_visualizations(df):
 
     return correlation_path, clustering_path
 
+def perform_statistical_analysis(df):
+    """
+    Perform statistical analyses including normality tests and outlier detection.
+    """
+    insights = []
+
+    # Normality test for numeric columns
+    numeric_data = df.select_dtypes(include=[np.number])
+    for column in numeric_data.columns:
+        stat, p_value = normaltest(numeric_data[column].dropna())
+        if p_value < 0.05:
+            insights.append(f"Column '{column}' does not follow a normal distribution (p={p_value:.3f}).")
+        else:
+            insights.append(f"Column '{column}' follows a normal distribution (p={p_value:.3f}).")
+
+    # Outlier detection summary
+    outlier_counts = (np.abs((numeric_data - numeric_data.mean()) / numeric_data.std()) > 3).sum()
+    for column, count in outlier_counts.items():
+        if count > 0:
+            insights.append(f"Column '{column}' has {count} outlier(s).")
+
+    return insights
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: python autolysis2.py <path_to_csv_file>")
+        print("Usage: python enhanced_autolysis.py <path_to_csv_file>")
         sys.exit(1)
 
     file_path = sys.argv[1]
@@ -130,6 +179,10 @@ if __name__ == "__main__":
         'summary_statistics': df.describe().to_string()
     }
 
+    # Perform statistical analysis
+    insights = perform_statistical_analysis(df)
+    key_insights = "\n".join(insights)
+
     # Images dictionary for the story
     images = {
         'correlation': correlation_path,
@@ -137,7 +190,7 @@ if __name__ == "__main__":
     }
 
     # Generate the LLM story
-    story = generate_llm_story(analysis, images)
+    story = generate_llm_story(analysis, images, key_insights)
 
     # Generate README content
     readme_content = f"""# Data Analysis Report
