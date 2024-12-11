@@ -65,15 +65,10 @@ def generate_llm_story(analysis, images):
         print(f"Error with OpenAI API: {e}")
         sys.exit(1)
 
-def create_visualizations(df, file_name):
+def create_visualizations(df):
     """
     Generate visualizations for the dataset with larger sizes but low detail.
     """
-    # Create a directory based on the input file name
-    base_name = os.path.splitext(os.path.basename(file_name))[0]
-    directory = f"{base_name} visualizations"
-    os.makedirs(directory, exist_ok=True)
-
     # Generate a correlation heatmap without numerical annotations (only colors) with borders around tiles
     plt.figure(figsize=(10, 10), dpi=100)  # Increased figure size (10x10 inches)
     sns.heatmap(
@@ -83,7 +78,7 @@ def create_visualizations(df, file_name):
         linewidths=0.5,  # Border thickness around tiles
         linecolor='black'  # Border color (black)
     )
-    correlation_path = os.path.join(directory, 'correlation_heatmap.png')
+    correlation_path = 'correlation_heatmap.png'
     plt.title('Correlation Heatmap')
     plt.tight_layout()
     plt.savefig(correlation_path)
@@ -104,12 +99,12 @@ def create_visualizations(df, file_name):
         plt.xlabel(numeric_data.columns[0])
         plt.ylabel(numeric_data.columns[1])
         plt.colorbar(label='Cluster')
-        clustering_path = os.path.join(directory, 'clustering_visualization.png')
+        clustering_path = 'clustering_visualization.png'
         plt.tight_layout()
         plt.savefig(clustering_path)
         plt.close()
 
-    return directory, correlation_path, clustering_path
+    return correlation_path, clustering_path
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
@@ -125,7 +120,7 @@ if __name__ == "__main__":
     df = pd.read_csv(file_path)
 
     # Create visualizations
-    directory, correlation_path, clustering_path = create_visualizations(df, file_path)
+    correlation_path, clustering_path = create_visualizations(df)
 
     # Perform analysis
     analysis = {
@@ -157,15 +152,15 @@ if __name__ == "__main__":
 - {f'![Clustering Visualization]({clustering_path})' if clustering_path else 'Clustering visualization not generated.'}
 
 ## Notes
-- For detailed data and visualizations, please refer to the '{directory}' directory.
+- For detailed data and visualizations, please refer to the files generated.
 """
 
     # Save README
-    readme_path = os.path.join(directory, 'README.md')
+    readme_path = 'README.md'
     with open(readme_path, 'w') as f:
         f.write(readme_content)
 
-    print(f"Generated files in {directory}:")
+    print("Generated files:")
     print("- correlation_heatmap.png")
     if clustering_path:
         print("- clustering_visualization.png")
